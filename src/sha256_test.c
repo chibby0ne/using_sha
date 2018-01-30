@@ -19,26 +19,47 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE */
 /* OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. */
 
-/* To test using sha256sum command use,
-   echo -ne "Hola\0" | sha256sum  */
 #include <openssl/sha.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
+#include <unistd.h>
+
+#define MAX_MESSAGE_LENGTH 1000
+#define DEFAULT_WORD "Hello"
+
+void print_usage(int count, char *argv[])
+{
+    printf("used: %s", argv[0]);
+    for (int i = 1; i < count; ++i) {
+        printf(" %s", argv[i]);
+    }
+    printf("\ncorrect usage: %s WORD_TO_HASH [Default word: %s]\n",
+            argv[0], DEFAULT_WORD);
+    exit(EXIT_FAILURE);
+}
 
 int main(int argc, char *argv[])
 {
+    char *word_to_hash;
+    if (argc > 2) {
+        print_usage(argc, argv);
+    } else if (argc == 2) {
+        word_to_hash = argv[1];
+    } else {
+        word_to_hash = DEFAULT_WORD;
+    }
     
     SHA256_CTX ctx;
     unsigned char md[SHA256_DIGEST_LENGTH];
     char hash_string[SHA256_DIGEST_LENGTH * 2 + 1];
-    char message[] = "Hola";
-    printf("message: %s\n", message);
+    printf("Word to hash: %s\n", word_to_hash);
     if (!SHA256_Init(&ctx)) {
         fprintf(stderr, "error at SHA256_Init\n");
         exit(EXIT_FAILURE);
     }
-    if (!SHA256_Update(&ctx, message, strlen(message) + 1)) {
+    if (!SHA256_Update(&ctx, word_to_hash, strlen(word_to_hash))) {
         fprintf(stderr, "error at SHA256_Update\n");
         exit(EXIT_FAILURE);
     }
@@ -54,8 +75,23 @@ int main(int argc, char *argv[])
     }
     hash_string[SHA256_DIGEST_LENGTH * 2] = '\0';
 
-    printf("hash_string: %s\n", hash_string);
-    unsigned char golden_hash[] = "e9ceb6edc7086211436868bc69a3a4c2a8ea7f3caf62e6c47b2196fd289c7d6e";
+    printf("Calculated hash: %s\n", hash_string);
+
+    char command[MAX_MESSAGE_LENGTH];
+    strcpy(command, "echo -ne \"");
+    strcat(command, word_to_hash);
+    strcat(command, "\" | sha256sum");
+
+    FILE *output = popen(command, "r");
+    if (output == NULL) {
+        fprintf(stderr, "Error: %s\n", strerror(errno));
+    }
+
+    char golden_hash[MAX_MESSAGE_LENGTH];
+    if (fgets(golden_hash, SHA256_DIGEST_LENGTH * 2 + 1, output) != NULL) {
+        fprintf(stdout, "Golden hash (sha256sum): %s\n", golden_hash);
+    }
+
     if (!strcmp(hash_string, golden_hash)) {
         printf("Hash matches!\n");
     } else {
